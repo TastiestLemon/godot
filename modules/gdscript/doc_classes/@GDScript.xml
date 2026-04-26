@@ -431,6 +431,18 @@
 				[/codeblock]
 			</description>
 		</annotation>
+		<annotation name="@export_enum_indexed">
+			<return type="void" />
+			<param index="0" name="enum" type="Dictionary" />
+			<description>
+				Export an [Array], [PackedByteArray], [PackedInt32Array], [PackedInt64Array], or [PackedStringArray] property that is labeled with a given enumerator's keys in place of integers. Integers will still be used in cases where the provided enum has no key that matches a given value.
+				See also [constant PROPERTY_HINT_ENUM].
+				[codeblock]
+				enum UnitStat {HEALTH, MAX_HEALTH, STRENGTH, SPEED}
+				@export_enum_indexed(UnitStat) var stats: PackedInt32Array
+				[/codeblock]
+			</description>
+		</annotation>
 		<annotation name="@export_exp_easing" qualifiers="vararg">
 			<return type="void" />
 			<param index="0" name="hints" type="String" default="&quot;&quot;" />

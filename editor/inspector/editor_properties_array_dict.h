@@ -42,6 +42,7 @@ class EditorPropertyArrayObject : public RefCounted {
 	GDCLASS(EditorPropertyArrayObject, RefCounted);
 
 	Variant array;
+	Dictionary *enum_index = nullptr;
 
 protected:
 	bool _set(const StringName &p_name, const Variant &p_value);
@@ -54,6 +55,8 @@ public:
 
 	void set_array(const Variant &p_array);
 	Variant get_array();
+	void set_enum_index(const String &p_hint_string);
+	const Dictionary *get_enum_index() const;
 };
 
 class EditorPropertyDictionaryObject : public RefCounted {
@@ -106,7 +109,12 @@ class EditorPropertyArray : public EditorProperty {
 		void set_index(int p_idx) {
 			String prop_name = "indices/" + itos(p_idx);
 			prop->set_object_and_property(object.ptr(), prop_name);
-			prop->set_label(itos(p_idx));
+			if (const Dictionary *enum_index = object->get_enum_index()) {
+				Variant key = enum_index->find_key(p_idx);
+				prop->set_label(enum_index->has(key) ? key.get_construct_string() : itos(p_idx));
+			} else {
+				prop->set_label(itos(p_idx));
+			}
 			index = p_idx;
 		}
 	};

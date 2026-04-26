@@ -156,6 +156,7 @@ GDScriptParser::GDScriptParser() {
 		// Export annotations.
 		register_annotation(MethodInfo("@export"), AnnotationInfo::VARIABLE, &GDScriptParser::export_annotations<PROPERTY_HINT_NONE, Variant::NIL>);
 		register_annotation(MethodInfo("@export_enum", PropertyInfo(Variant::STRING, "names")), AnnotationInfo::VARIABLE, &GDScriptParser::export_annotations<PROPERTY_HINT_ENUM, Variant::NIL>, varray(), true);
+		register_annotation(MethodInfo("@export_enum_indexed", PropertyInfo(Variant::DICTIONARY, "enum")), AnnotationInfo::VARIABLE, &GDScriptParser::export_annotations<PROPERTY_HINT_ENUM_INDEXED, Variant::NIL>);
 		register_annotation(MethodInfo("@export_file", PropertyInfo(Variant::STRING, "filter")), AnnotationInfo::VARIABLE, &GDScriptParser::export_annotations<PROPERTY_HINT_FILE, Variant::STRING>, varray(""), true);
 		register_annotation(MethodInfo("@export_file_path", PropertyInfo(Variant::STRING, "filter")), AnnotationInfo::VARIABLE, &GDScriptParser::export_annotations<PROPERTY_HINT_FILE_PATH, Variant::STRING>, varray(""), true);
 		register_annotation(MethodInfo("@export_dir"), AnnotationInfo::VARIABLE, &GDScriptParser::export_annotations<PROPERTY_HINT_DIR, Variant::STRING>);
@@ -4689,6 +4690,8 @@ bool GDScriptParser::export_annotations(AnnotationNode *p_annotation, Node *p_ta
 	variable->export_info.type = t_type;
 	variable->export_info.hint = t_hint;
 
+	bool enumIndexedArray = p_annotation->name == SNAME("@export_enum_indexed");
+
 	String hint_string;
 	for (int i = 0; i < p_annotation->resolved_arguments.size(); i++) {
 		String arg_string = String(p_annotation->resolved_arguments[i]);
@@ -4698,7 +4701,7 @@ bool GDScriptParser::export_annotations(AnnotationNode *p_annotation, Node *p_ta
 				push_error(vformat(R"(Argument %d of annotation "%s" is empty.)", i + 1, p_annotation->name), p_annotation->arguments[i]);
 				return false;
 			}
-			if (arg_string.contains_char(',')) {
+			if (arg_string.contains_char(',') && !enumIndexedArray) {
 				push_error(vformat(R"(Argument %d of annotation "%s" contains a comma. Use separate arguments instead.)", i + 1, p_annotation->name), p_annotation->arguments[i]);
 				return false;
 			}
@@ -4798,7 +4801,7 @@ bool GDScriptParser::export_annotations(AnnotationNode *p_annotation, Node *p_ta
 		if (export_type.builtin_type == Variant::DICTIONARY) {
 			variable->export_info.type = Variant::DICTIONARY;
 		}
-	} else if (p_annotation->name == SNAME("@export")) {
+	} else if (p_annotation->name == SNAME("@export") || enumIndexedArray) {
 		use_default_variable_type_check = false;
 
 		if (variable->datatype_specifier == nullptr && variable->initializer == nullptr) {
@@ -4809,6 +4812,15 @@ bool GDScriptParser::export_annotations(AnnotationNode *p_annotation, Node *p_ta
 		if (export_type.has_no_type()) {
 			push_error(R"(Cannot use simple "@export" annotation because the type of the initialized value can't be inferred.)", p_annotation);
 			return false;
+		}
+
+		String indexingHint;
+		if (enumIndexedArray) {
+			if (!is_array && export_type.builtin_type != Variant::ARRAY) {
+				push_error(R"(@export_enum_indexed is only supported with arrays and packed arrays.)", p_annotation);
+				return false;
+			}
+			indexingHint = PropertyInfo::serialize_hint_type(Variant::DICTIONARY, PROPERTY_HINT_ENUM_INDEXED, variable->export_info.hint_string);
 		}
 
 		switch (export_type.kind) {
@@ -4949,6 +4961,10 @@ bool GDScriptParser::export_annotations(AnnotationNode *p_annotation, Node *p_ta
 			variable->export_info.hint_string = key_prefix + ";" + value_prefix;
 			variable->export_info.usage = PROPERTY_USAGE_DEFAULT;
 			variable->export_info.class_name = StringName();
+		}
+
+		if (!indexingHint.is_empty()) {
+			variable->export_info.hint_string += ";" + indexingHint;
 		}
 	} else if (p_annotation->name == SNAME("@export_enum")) {
 		use_default_variable_type_check = false;

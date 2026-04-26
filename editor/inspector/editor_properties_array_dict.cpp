@@ -35,6 +35,7 @@
 #include "core/io/resource_loader.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
+#include "core/variant/variant_utility.h"
 #include "editor/docks/inspector_dock.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
@@ -112,6 +113,14 @@ void EditorPropertyArrayObject::set_array(const Variant &p_array) {
 
 Variant EditorPropertyArrayObject::get_array() {
 	return array;
+}
+
+void EditorPropertyArrayObject::set_enum_index(const String &p_hint_string) {
+	enum_index = memnew(Dictionary(VariantUtilityFunctions::str_to_var(p_hint_string)));
+}
+
+const Dictionary *EditorPropertyArrayObject::get_enum_index() const {
+	return enum_index;
 }
 
 ///////////////////
@@ -326,19 +335,23 @@ void EditorPropertyArray::_resource_selected(const String &p_path, Ref<Resource>
 
 void EditorPropertyArray::_create_new_property_slot() {
 	int idx = slots.size();
+	bool has_enum_index = object->get_enum_index() != nullptr;
 	HBoxContainer *hbox = memnew(HBoxContainer);
 
 	EditorProperty *prop = memnew(EditorPropertyNil);
 
-	Button *reorder_button = memnew(Button);
-	reorder_button->set_accessibility_name(TTRC("Reorder"));
-	reorder_button->set_button_icon(get_editor_theme_icon(SNAME("TripleBar")));
-	reorder_button->set_default_cursor_shape(Control::CURSOR_MOVE);
-	reorder_button->set_disabled(is_read_only());
-	reorder_button->set_theme_type_variation(SNAME("EditorInspectorFlatButton"));
-	reorder_button->connect(SceneStringName(gui_input), callable_mp(this, &EditorPropertyArray::_reorder_button_gui_input));
-	reorder_button->connect(SNAME("button_up"), callable_mp(this, &EditorPropertyArray::_reorder_button_up));
-	reorder_button->connect(SNAME("button_down"), callable_mp(this, &EditorPropertyArray::_reorder_button_down).bind(idx));
+	Button *reorder_button = nullptr;
+	if (!has_enum_index) {
+		reorder_button = memnew(Button);
+		reorder_button->set_accessibility_name(TTRC("Reorder"));
+		reorder_button->set_button_icon(get_editor_theme_icon(SNAME("TripleBar")));
+		reorder_button->set_default_cursor_shape(Control::CURSOR_MOVE);
+		reorder_button->set_disabled(is_read_only());
+		reorder_button->set_theme_type_variation(SNAME("EditorInspectorFlatButton"));
+		reorder_button->connect(SceneStringName(gui_input), callable_mp(this, &EditorPropertyArray::_reorder_button_gui_input));
+		reorder_button->connect(SNAME("button_up"), callable_mp(this, &EditorPropertyArray::_reorder_button_up));
+		reorder_button->connect(SNAME("button_down"), callable_mp(this, &EditorPropertyArray::_reorder_button_down).bind(idx));
+	}
 
 	hbox->add_child(prop);
 
@@ -353,7 +366,7 @@ void EditorPropertyArray::_create_new_property_slot() {
 		edit_btn->set_disabled(is_read_only());
 		edit_btn->set_theme_type_variation(SNAME("EditorInspectorFlatButton"));
 		edit_btn->connect(SceneStringName(pressed), callable_mp(this, &EditorPropertyArray::_change_type).bind(edit_btn, idx));
-	} else {
+	} else if (!has_enum_index) {
 		remove_btn = memnew(Button);
 		remove_btn->set_accessibility_name(TTRC("Remove"));
 		remove_btn->set_button_icon(get_editor_theme_icon(SNAME("Remove")));
@@ -380,6 +393,7 @@ void EditorPropertyArray::set_preview_value(bool p_preview_value) {
 
 void EditorPropertyArray::update_property() {
 	Variant array = get_edited_property_value();
+	bool has_enum_index = object->get_enum_index() != nullptr;
 	String array_type_name = Variant::get_type_name(array_type);
 	String array_sub_type_name;
 	if (array_type == Variant::ARRAY && subtype != Variant::NIL) {
@@ -485,14 +499,16 @@ void EditorPropertyArray::update_property() {
 			property_vbox->set_h_size_flags(SIZE_EXPAND_FILL);
 			vbox->add_child(property_vbox);
 
-			button_add_item = memnew(EditorInspectorActionButton(TTRC("Add Element"), SNAME("Add")));
-			button_add_item->connect(SceneStringName(pressed), callable_mp(this, &EditorPropertyArray::_add_element));
-			button_add_item->connect(SceneStringName(draw), callable_mp(this, &EditorPropertyArray::_button_add_item_draw));
-			SET_DRAG_FORWARDING_CD(button_add_item, EditorPropertyArray);
-			button_add_item->set_disabled(is_read_only());
-			button_add_item->set_accessibility_name(TTRC("Add"));
-			button_add_item->set_visible(page_index == max_page);
-			vbox->add_child(button_add_item);
+			if (!has_enum_index) {
+				button_add_item = memnew(EditorInspectorActionButton(TTRC("Add Element"), SNAME("Add")));
+				button_add_item->connect(SceneStringName(pressed), callable_mp(this, &EditorPropertyArray::_add_element));
+				button_add_item->connect(SceneStringName(draw), callable_mp(this, &EditorPropertyArray::_button_add_item_draw));
+				SET_DRAG_FORWARDING_CD(button_add_item, EditorPropertyArray);
+				button_add_item->set_disabled(is_read_only());
+				button_add_item->set_accessibility_name(TTRC("Add"));
+				button_add_item->set_visible(page_index == max_page);
+				vbox->add_child(button_add_item);
+			}
 
 			paginator = memnew(EditorPaginator);
 			paginator->connect("page_changed", callable_mp(this, &EditorPropertyArray::_page_changed));
@@ -539,7 +555,7 @@ void EditorPropertyArray::update_property() {
 				}
 				new_prop->set_selectable(false);
 				new_prop->set_use_folding(is_using_folding());
-				new_prop->set_name_split_ratio(0.0);
+				new_prop->set_name_split_ratio(has_enum_index ? 0.5 : 0.0);
 				new_prop->connect(SNAME("property_changed"), callable_mp(this, &EditorPropertyArray::_property_changed));
 				new_prop->connect(SNAME("object_id_selected"), callable_mp(this, &EditorPropertyArray::_object_id_selected));
 				if (value_type == Variant::OBJECT) {
@@ -567,7 +583,7 @@ void EditorPropertyArray::update_property() {
 				callable_mp(slot.prop, &EditorProperty::grab_focus).call_deferred(0);
 				changing_type_index = EditorPropertyArrayObject::NOT_CHANGING_TYPE;
 			}
-			if (name_size == 0) {
+			if (name_size == 0 && !has_enum_index) {
 				int max_index = (page_index + 1) * page_length - 1;
 				const String ms = String("M").repeat(itos(max_index).length());
 
@@ -900,7 +916,21 @@ void EditorPropertyArray::setup(Variant::Type p_array_type, const String &p_hint
 
 	// The format of p_hint_string is:
 	// subType/subTypeHint:nextSubtype ... etc.
-	parse_hint_type_string(p_hint_string, subtype, subtype_hint, subtype_hint_string);
+	PackedStringArray types = p_hint_string.split(";", true, 1);
+	for (int64_t i = 0; i < types.size(); ++i) {
+		String hint = types[i];
+		Variant::Type new_subtipe;
+		PropertyHint new_hint;
+		String new_string;
+		parse_hint_type_string(hint, new_subtipe, new_hint, new_string);
+		if (new_hint == PROPERTY_HINT_ENUM_INDEXED) {
+			object->set_enum_index(new_string);
+		} else {
+			subtype = new_subtipe;
+			subtype_hint = new_hint;
+			subtype_hint_string = new_string;
+		}
+	}
 }
 
 void EditorPropertyArray::_reorder_button_gui_input(const Ref<InputEvent> &p_event) {
